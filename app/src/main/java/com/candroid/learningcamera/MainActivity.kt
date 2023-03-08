@@ -1,24 +1,21 @@
 package com.candroid.learningcamera
 
 import android.content.pm.PackageManager
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import androidx.appcompat.app.AppCompatActivity
+import android.net.Uri
 import android.os.Bundle
-import android.util.Log
+import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.candroid.learningcamera.databinding.ActivityMainBinding
-import com.google.android.material.snackbar.Snackbar
 import java.io.File
-import java.io.FileOutputStream
-import java.nio.ByteBuffer
 import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+
 
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
@@ -64,6 +61,7 @@ class MainActivity : AppCompatActivity() {
         super.onDestroy()
         cameraExecutor.shutdown()
     }
+
 
     private fun cameraPermissionGranted() = ContextCompat.checkSelfPermission(
         baseContext,
@@ -124,21 +122,25 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun saveImage(image: ImageProxy) {
-        val buffer: ByteBuffer = image.planes[0].buffer
-        val bytes = ByteArray(buffer.remaining())
-        buffer.get(bytes)
-
-        val file = File(
+        val imageCapture = imageCapture ?: return
+        val photoFile = File(
             outputDirectory,
-            "IMG_${
-                SimpleDateFormat(
-                    "yyyyMMdd_HHmmss_SSS",
-                    Locale.getDefault()
-                ).format(System.currentTimeMillis())
-            }.jpg"
+            SimpleDateFormat(
+                "yy-MM-dd-HH-mm-ss-SSS",
+                Locale.getDefault()
+            ).format(System.currentTimeMillis()) + ".jpg"
         )
+        val outputOption = ImageCapture.OutputFileOptions.Builder(photoFile).build()
+        imageCapture.takePicture(outputOption, ContextCompat.getMainExecutor(this), object :ImageCapture.OnImageSavedCallback{
+            override fun onImageSaved(outputFileResults: ImageCapture.OutputFileResults) {
+                val savedUri = Uri.fromFile(photoFile)
+                //Toast.makeText(this@MainActivity, "Saved to $savedUri", Toast.LENGTH_LONG).show()
+            }
 
-        file.writeBytes(bytes)
+            override fun onError(exception: ImageCaptureException) {
+                Toast.makeText(this@MainActivity, "Something went wrong.", Toast.LENGTH_LONG).show()
+            }
+        })
     }
 
 
