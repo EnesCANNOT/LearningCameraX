@@ -1,14 +1,19 @@
 package com.candroid.learningcamera
 
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
+import android.util.Log
 import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.candroid.learningcamera.databinding.ActivityMainBinding
+import com.google.android.material.snackbar.Snackbar
 import java.io.File
+import java.io.FileOutputStream
 import java.nio.ByteBuffer
 import java.text.SimpleDateFormat
 import java.util.*
@@ -21,18 +26,37 @@ class MainActivity : AppCompatActivity() {
     private lateinit var outputDirectory: File
     private lateinit var cameraExecutor: ExecutorService
 
+    private var cameraPermission = false
+    private var writeExternalStoragePermission = false
+
+    private var permissionList = mutableListOf<Boolean>()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        cameraPermission = cameraPermissionGranted()
+        writeExternalStoragePermission = writeExternalStoragePermissionGranted()
+
+        permissionList.add(cameraPermission)
+        permissionList.add(writeExternalStoragePermission)
+
         outputDirectory = getOutputDirectory()
         cameraExecutor = Executors.newSingleThreadExecutor()
 
-        if (cameraPermissionGranted()){
-            startCamera()
+        val permissionsGranted = permissionList.all {
+            it
+        }
+
+        if (!permissionsGranted) {
+            ActivityCompat.requestPermissions(
+                this,
+                arrayOf(android.Manifest.permission.CAMERA, android.Manifest.permission.WRITE_EXTERNAL_STORAGE),
+                0
+            )
         } else{
-            ActivityCompat.requestPermissions(this, arrayOf(android.Manifest.permission.CAMERA), 1)
+            startCamera()
         }
     }
 
@@ -46,10 +70,15 @@ class MainActivity : AppCompatActivity() {
         android.Manifest.permission.CAMERA
     ) == PackageManager.PERMISSION_GRANTED
 
+    private fun writeExternalStoragePermissionGranted() = ContextCompat.checkSelfPermission(
+        baseContext,
+        android.Manifest.permission.WRITE_EXTERNAL_STORAGE
+    ) == PackageManager.PERMISSION_GRANTED
+
     private fun startCamera() {
         val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
 
-        cameraProviderFuture.addListener( {
+        cameraProviderFuture.addListener({
             val cameraProvider: ProcessCameraProvider = cameraProviderFuture.get()
 
             val preview = Preview.Builder()
@@ -111,6 +140,7 @@ class MainActivity : AppCompatActivity() {
 
         file.writeBytes(bytes)
     }
+
 
     private fun getOutputDirectory(): File {
         val mediaDir = externalMediaDirs.firstOrNull()?.let {
