@@ -1,9 +1,10 @@
 package com.candroid.learningcamera
 
+import android.Manifest
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Bundle
-import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
@@ -11,6 +12,7 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.candroid.learningcamera.databinding.ActivityMainBinding
 import java.io.File
+import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.ExecutorService
@@ -49,7 +51,7 @@ class MainActivity : AppCompatActivity() {
         if (!permissionsGranted) {
             ActivityCompat.requestPermissions(
                 this,
-                arrayOf(android.Manifest.permission.CAMERA, android.Manifest.permission.WRITE_EXTERNAL_STORAGE),
+                arrayOf(Manifest.permission.CAMERA, Manifest.permission.WRITE_EXTERNAL_STORAGE),
                 0
             )
         } else{
@@ -65,12 +67,12 @@ class MainActivity : AppCompatActivity() {
 
     private fun cameraPermissionGranted() = ContextCompat.checkSelfPermission(
         baseContext,
-        android.Manifest.permission.CAMERA
+        Manifest.permission.CAMERA
     ) == PackageManager.PERMISSION_GRANTED
 
     private fun writeExternalStoragePermissionGranted() = ContextCompat.checkSelfPermission(
         baseContext,
-        android.Manifest.permission.WRITE_EXTERNAL_STORAGE
+        Manifest.permission.WRITE_EXTERNAL_STORAGE
     ) == PackageManager.PERMISSION_GRANTED
 
     private fun startCamera() {
@@ -122,7 +124,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun saveImage(image: ImageProxy) {
-        val imageCapture = imageCapture ?: return
         val photoFile = File(
             outputDirectory,
             SimpleDateFormat(
@@ -130,17 +131,12 @@ class MainActivity : AppCompatActivity() {
                 Locale.getDefault()
             ).format(System.currentTimeMillis()) + ".jpg"
         )
-        val outputOption = ImageCapture.OutputFileOptions.Builder(photoFile).build()
-        imageCapture.takePicture(outputOption, ContextCompat.getMainExecutor(this), object :ImageCapture.OnImageSavedCallback{
-            override fun onImageSaved(outputFileResults: ImageCapture.OutputFileResults) {
-                val savedUri = Uri.fromFile(photoFile)
-                //Toast.makeText(this@MainActivity, "Saved to $savedUri", Toast.LENGTH_LONG).show()
-            }
 
-            override fun onError(exception: ImageCaptureException) {
-                Toast.makeText(this@MainActivity, "Something went wrong.", Toast.LENGTH_LONG).show()
-            }
-        })
+        val bitmap = image.toBitmap()
+        val fileOutputStream = FileOutputStream(photoFile)
+        bitmap.compress(Bitmap.CompressFormat.JPEG, 100, fileOutputStream)
+        fileOutputStream.flush();
+        fileOutputStream.close()
     }
 
 
