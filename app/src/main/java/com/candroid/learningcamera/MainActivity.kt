@@ -1,25 +1,33 @@
 package com.candroid.learningcamera
 
 import android.Manifest
+import android.content.ContentValues.TAG
 import android.content.pm.PackageManager
-import android.graphics.Bitmap
-import android.net.Uri
 import android.os.Bundle
+import android.util.Log
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.LifecycleCoroutineScope
+import androidx.lifecycle.lifecycleScope
 import com.candroid.learningcamera.databinding.ActivityMainBinding
+import com.google.android.gms.tasks.Task
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.text.Text
+import com.google.mlkit.vision.text.TextRecognition
+import com.google.mlkit.vision.text.latin.TextRecognizerOptions
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
 import java.io.File
-import java.io.FileOutputStream
-import java.text.SimpleDateFormat
-import java.util.*
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
 
-class MainActivity : AppCompatActivity() {
+@ExperimentalGetImage class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private var imageCapture: ImageCapture? = null
     private lateinit var outputDirectory: File
@@ -93,7 +101,9 @@ class MainActivity : AppCompatActivity() {
             val imageAnalysis = ImageAnalysis.Builder()
                 .build()
                 .also {
-                    it.setAnalyzer(cameraExecutor, FrameAnalyzer())
+                    lifecycleScope.launch(Dispatchers.Default){
+                        it.setAnalyzer(cameraExecutor, FrameAnalyzer())
+                    }
                 }
 
             val cameraSelector = CameraSelector.Builder()
@@ -114,15 +124,31 @@ class MainActivity : AppCompatActivity() {
         }, ContextCompat.getMainExecutor(this))
     }
 
-    private inner class FrameAnalyzer : ImageAnalysis.Analyzer {
+    inner class FrameAnalyzer : ImageAnalysis.Analyzer {
+        val recognizer= TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
         override fun analyze(image: ImageProxy) {
-            // Save every frame taken as soon as the PreviewView is opened
-            saveImage(image)
-
-            image.close()
+            GlobalScope.launch(Dispatchers.IO) {
+                val mediaImage=image.image
+                if(mediaImage != null){
+                    recognizer.process(InputImage.fromMediaImage(mediaImage, image.imageInfo.rotationDegrees))
+                        .addOnSuccessListener { visionText ->
+                            //Log.d("ML_Kit_VisionText", "${visionText.text}")
+                            for(block in visionText.textBlocks){
+                                //Log.d("ML_Kit_Blocks", "${block.text}")
+                                for(line in block.lines){
+                                    Log.d("ML_Kit_Lines", "${line.text}")
+                                }
+                            }
+                        }
+                        .addOnFailureListener { e ->
+                            Log.i("ML_Kit_Error", e.message.toString())
+                        }
+                        .addOnCompleteListener { image.close() }
+                }
+            }
         }
     }
-
+/*
     private fun saveImage(image: ImageProxy) {
         val photoFile = File(
             outputDirectory,
@@ -139,6 +165,7 @@ class MainActivity : AppCompatActivity() {
         fileOutputStream.close()
     }
 
+*/
 
     private fun getOutputDirectory(): File {
         val mediaDir = externalMediaDirs.firstOrNull()?.let {
@@ -146,5 +173,13 @@ class MainActivity : AppCompatActivity() {
         }
         return if (mediaDir != null && mediaDir.exists())
             mediaDir else filesDir
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
     }
 }
