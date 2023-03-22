@@ -1,22 +1,21 @@
 package com.candroid.learningcamera
 
 import android.Manifest
-import android.content.ContentValues.TAG
 import android.content.pm.PackageManager
+import android.graphics.Rect
 import android.os.Bundle
+import android.util.DisplayMetrics
 import android.util.Log
-import android.widget.Toast
+import android.util.Size
+import android.view.Surface
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.LifecycleCoroutineScope
 import androidx.lifecycle.lifecycleScope
 import com.candroid.learningcamera.databinding.ActivityMainBinding
-import com.google.android.gms.tasks.Task
 import com.google.mlkit.vision.common.InputImage
-import com.google.mlkit.vision.text.Text
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import kotlinx.coroutines.Dispatchers
@@ -27,11 +26,16 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
 
-@ExperimentalGetImage class MainActivity : AppCompatActivity() {
+@ExperimentalGetImage
+class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private var imageCapture: ImageCapture? = null
     private lateinit var outputDirectory: File
     private lateinit var cameraExecutor: ExecutorService
+    //private var listOfRect = mutableListOf<Rect>()
+    private var widthOfDevice: Int? = null
+    private var heightOfDevice: Int? = null
+
 
     private var cameraPermission = false
     private var writeExternalStoragePermission = false
@@ -42,6 +46,11 @@ import java.util.concurrent.Executors
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        val displayMetrics = DisplayMetrics()
+        windowManager.defaultDisplay.getMetrics(displayMetrics)
+        widthOfDevice = displayMetrics.widthPixels
+        heightOfDevice = displayMetrics.heightPixels
 
         cameraPermission = cameraPermissionGranted()
         writeExternalStoragePermission = writeExternalStoragePermissionGranted()
@@ -62,7 +71,7 @@ import java.util.concurrent.Executors
                 arrayOf(Manifest.permission.CAMERA, Manifest.permission.WRITE_EXTERNAL_STORAGE),
                 0
             )
-        } else{
+        } else {
             startCamera()
         }
     }
@@ -99,10 +108,14 @@ import java.util.concurrent.Executors
                 .build()
 
             val imageAnalysis = ImageAnalysis.Builder()
-                .build()
+                .setBackgroundExecutor(cameraExecutor)
+                //.setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                .setTargetRotation(Surface.ROTATION_0)
+                .setTargetResolution(Size(widthOfDevice!!, heightOfDevice!!))
+               .build()
                 .also {
-                    lifecycleScope.launch(Dispatchers.Default){
-                        it.setAnalyzer(cameraExecutor, FrameAnalyzer())
+                    lifecycleScope.launch(Dispatchers.Default) {
+                        it.setAnalyzer(cameraExecutor, FrameAnalyzer(binding.overlayView))
                     }
                 }
 
@@ -124,26 +137,42 @@ import java.util.concurrent.Executors
         }, ContextCompat.getMainExecutor(this))
     }
 
-    inner class FrameAnalyzer : ImageAnalysis.Analyzer {
-        val recognizer= TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+    inner class FrameAnalyzer (var overlayView: OverlayView): ImageAnalysis.Analyzer {
+        val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+        var textBoxes= mutableListOf<Rect>()
+
         override fun analyze(image: ImageProxy) {
+            //textBoxes.clear()
             GlobalScope.launch(Dispatchers.IO) {
-                val mediaImage=image.image
-                if(mediaImage != null){
-                    recognizer.process(InputImage.fromMediaImage(mediaImage, image.imageInfo.rotationDegrees))
+                val mediaImage = image.image
+                if (mediaImage != null) {
+                    recognizer.process(
+                        InputImage.fromMediaImage(
+                            mediaImage,
+                            image.imageInfo.rotationDegrees
+                        )
+                    )
                         .addOnSuccessListener { visionText ->
                             //Log.d("ML_Kit_VisionText", "${visionText.text}")
-                            for(block in visionText.textBlocks){
+                            for (block in visionText.textBlocks) {
                                 //Log.d("ML_Kit_Blocks", "${block.text}")
-                                for(line in block.lines){
-                                    Log.d("ML_Kit_Lines", "${line.text}")
+                                for (line in block.lines) {
+
+                                    val boundingBox = line.boundingBox
+                                    if ((boundingBox != null) && (boundingBox.left >= 0) && (boundingBox.top >= 0) && (boundingBox.right <= image.width) && (boundingBox.bottom <= image.height)) {
+                                        textBoxes.add(boundingBox)
+                                        overlayView.setBoxes(textBoxes)
+                                    }
                                 }
                             }
+
                         }
                         .addOnFailureListener { e ->
                             Log.i("ML_Kit_Error", e.message.toString())
                         }
                         .addOnCompleteListener { image.close() }
+
+                    textBoxes.clear()
                 }
             }
         }
@@ -175,11 +204,11 @@ import java.util.concurrent.Executors
             mediaDir else filesDir
     }
 
-    override fun onRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<out String>,
-        grantResults: IntArray
-    ) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-    }
+//    override fun onRequestPermissionsResult(
+//        requestCode: Int,
+//        permissions: Array<out String>,
+//        grantResults: IntArray
+//    ) {
+//        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+//    }
 }
